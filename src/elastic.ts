@@ -303,24 +303,127 @@ export const indexMailBoxes = async () => {
   });
 };
 
-export const createMailBoxDoc = async ({
-  accountId,
+export const createMailBox = async ({
+  userId,
   emailAddress,
   accessToken,
 }: {
-  accountId: string;
+  userId: string;
   emailAddress: string;
   accessToken: string;
 }) => {
-  return await esclient.index({
-    index: "mailboxes",
-    id: accountId,
-    body: {
-      email_address: emailAddress,
-      account_id: accountId,
-      access_token: accessToken,
-      sync_status: "outdated",
-      last_sync_time: new Date().toISOString(),
+  try {
+    return await esclient.index({
+      index: "mailboxes",
+      id: userId,
+      body: {
+        emailAddress: emailAddress,
+        userId: userId,
+        accessToken: accessToken,
+        syncStatus: "outdated",
+        lastSyncTime: new Date().toISOString(),
+      },
+    });
+  } catch (e) {
+    console.error("Error createMailBox:", e);
+
+    throw e;
+  }
+};
+
+export const bulkInsertMessages = async ({ userId, mail, mailMessages }) => {
+  const operationsForBulk = mailMessages.flatMap((email) => [
+    { index: { _index: "email_messages", _id: email.id } },
+    {
+      ...email,
+      userId,
+      primaryEmail: mail,
     },
+  ]);
+  try {
+    const bulkResponse = await esclient.bulk({
+      refresh: true,
+      operations: operationsForBulk,
+    });
+
+    if (bulkResponse.errors) {
+      const erroredDocuments = [];
+
+      bulkResponse.items.forEach((action, i) => {
+        const operation = Object.keys(action)[0];
+        if (action[operation].error) {
+          erroredDocuments.push({
+            status: action[operation].status,
+            error: action[operation].error,
+            operation: operation[i * 2],
+            document: operation[i * 2 + 1],
+          });
+        }
+      });
+      console.log(erroredDocuments);
+    }
+  } catch (e) {
+    console.error("Error bulkInsertMessages:", e);
+    throw e;
+  }
+};
+
+export const updateUserMailBox = async ({ userId }) => {
+  try {
+    await esclient.update({
+      index: "mailboxes",
+      id: userId,
+      body: {
+        doc: {
+          last_sync_time: new Date().toISOString(),
+          sync_status: "updated",
+        },
+      },
+    });
+  } catch (e) {
+    console.error("updateUserMailBox", e);
+    throw e;
+  }
+};
+
+export const getUserMailBox = async ({ userId }) => {
+  await esclient.get({
+    index: "mailboxes",
+    id: userId, // not sure if this comes
   });
+};
+
+export interface MicrosoftGraphSubscription {
+  "@odata.context": string;
+  id: string;
+  resource: string;
+  applicationId: string;
+  changeType: string;
+  clientState: string;
+  notificationUrl: string;
+  notificationQueryOptions: null | string; // Allowing for potential non-null values
+  lifecycleNotificationUrl: string;
+  expirationDateTime: string; // ISO 8601 date string
+  creatorId: string;
+  includeResourceData: boolean;
+  latestSupportedTlsVersion: string;
+  encryptionCertificate: string;
+  encryptionCertificateId: string;
+  notificationUrlAppId: null | string; // Allowing for potential non-null values
+}
+
+export const createLocalSubscription = async (
+  subscription: MicrosoftGraphSubscription & { userId: string }
+) => {
+  try {
+    return await esclient.index({
+      index: "subscriptions",
+      id: subscription.id,
+      body: subscription,
+    });
+  } catch (e) {
+    console.error("Error local subscription:", e);
+
+    throw e;
+  }
 };

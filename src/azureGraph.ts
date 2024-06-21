@@ -21,7 +21,7 @@ export async function azureGet({
 
     return response.data;
   } catch (error) {
-    console.error("Error fetching data from Outlook Graph API:", error);
+    console.error("Error fetching data from Outlook Graph API:" + urlPart);
     throw error;
   }
 }
@@ -29,12 +29,14 @@ export async function azureGet({
 export async function azurePost({
   accessToken,
   urlPart,
+  data = {},
 }: {
   accessToken: string;
   urlPart: string;
+  data?: any;
 }) {
   try {
-    const response = await azureApi.post(urlPart, {
+    const response = await azureApi.post(urlPart, data, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -42,7 +44,30 @@ export async function azurePost({
 
     return response.data;
   } catch (error) {
-    console.error("Error fetching data from Outlook Graph API:", error);
+    console.error("Error posting data in Outlook Graph API:" + urlPart);
+    throw error;
+  }
+}
+
+export async function azurePatch({
+  accessToken,
+  urlPart,
+  data = {},
+}: {
+  accessToken: string;
+  urlPart: string;
+  data?: any;
+}) {
+  try {
+    const response = await azureApi.patch(urlPart, data, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("Error patching data in Outlook Graph API:" + urlPart);
     throw error;
   }
 }

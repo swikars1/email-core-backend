@@ -3,18 +3,50 @@ import express from "express";
 import "dotenv/config";
 import cors from "cors";
 import { v4 as uuidv4 } from "uuid";
-import { createMailBoxDoc, esclient } from "./elastic";
+import {
+  MicrosoftGraphSubscription,
+  bulkInsertMessages,
+  createLocalSubscription,
+  createMailBox,
+  esclient,
+  getUserMailBox,
+} from "./elastic";
 import bodyParser from "body-parser";
-import { azureGet } from "./azureGraph";
+import { azureGet, azurePatch, azurePost } from "./azureGraph";
 import {
   decryptPayload,
   decryptRSAWithPrivateKey,
   verifySignature,
 } from "./certHelper";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import EventEmitter from "events";
 
 const SERVER_PORT = process.env.PORT || 3000;
 
 const app = express();
+
+export const httpServer = createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    // credentials: true,
+  },
+});
+
+const myEmitter = new EventEmitter();
+
+io.on("connection", (socket) => {
+  myEmitter.on("newMailEvent", (data) => {
+    socket.emit("newmail", data);
+  });
+});
+
+io.engine.on("connection_error", (err) => {
+  console.log("Error", err.req, err.message, err.context);
+});
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -41,34 +73,58 @@ app.use(bodyParser.json());
 // decode datakey - done
 // decoded datakey + my cert private key and RSA decrypt = symmetric key -done
 
-app.post("/notification-client", async (req, res) => {
-  // const dummyValue = {
-  //   subscriptionId: "da01f595-e793-4b55-8ad4-4eae46f1b57f",
-  //   subscriptionExpirationDateTime: "2024-06-20T11:00:00+00:00",
-  //   changeType: "created",
-  //   resource:
-  //     "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
-  //   clientState: "SecretClientState",
-  //   tenantId: "84df9e7f-e9f6-40af-b435-aaaaaaaaaaaa",
-  //   encryptedContent: {
-  //     data: "SQDtqrZ3K83+qCH1yRrG3SvfqImyFwjBIs5nCKZIY7pXr+YFzWl0RbxOJRFBrs7Blx2BNdWmcjw4E8ZoQzfixK+SwGrJrDZeHlM2xnzYbY1SXI50pwVZKDaJoHuV8DYx11X8fT/S1Y3B5u4YJqfXMes/uRL8qgZk0F055D0NzaY1jTsD+IenhgIfkjesVt0k9IfXoSMFmqZywb/Q4qQHXV3b2Z8cl3FPRv8ALEF4g0rCCQIArKtMx6rNyscv04jl45Wfkh94Wz1l4G1Z5eMB4gf0OYbcgXMcjw4oUFgRDZjM/5gx+S+SORiOzf4Z1eUSggm+aGm/lZkRY9FvZ/viEkzXUDZkHlID9oU6i7t5a19eQTefv4RwZASfGwBcb6fgZ18b6gSWdPVNPBENe6bMhBLNfZJCiuTYLWMD/JMiMisbJGGCIyQ44MvwZXXEsIA/b8a4KYPqJan+vhFnTE9mrjk6MDwr7LyhmrwEKlsKF45X2sQj5NnClWV8eoJRbSd7/vqC+sw2BtkEzGPy+BaLk2fU9ZNzB6ZNUcpEjkkrVHs=",
-  //     dataKey:
-  //       "IRNQ8MHNJfHkizyH3NMTp6evv46DMA0yfUhnM6lVIp9DcHtp00e8FlVPXYrnKN+cXJyJyEylsw5UHOEh+w9hr8NcFwMuBw76fATL7IZ8AObRjFulLpl0CAUvCB+ViKM43RSdDKTM7ZOMu2eAK7+JN6f+d0S46kuF21Wqtlg1DSczJwnrlvc3ECQXlYsXbWUwBJTIHmpwSQVD+NUQTlk0ohRLIH9ieXtZXItygovfDGj2XJw/wE68Cx6QXUJOC202n894c23IyPTEHo7B1WT41OrVtwG92QCr25pRGP0eCnqwDu7jf4zpmMqEWKqH1uGS/uSaquSJctdN+YqL26YyQw==",
-  //     dataSignature: "hMgKuyrMgH5YkBtsz4Jct2nzdvzAZZ79enimnYtje/c=",
-  //     encryptionCertificateId: "93a264cafa864ef39c2673f8ff258b21",
-  //     encryptionCertificateThumbprint:
-  //       "ABAB3B1CB288713212335F60B6086A063393111D",
-  //   },
-  //   resourceData: {
-  //     "@odata.type": "#microsoft.graph.message",
-  //     "@odata.id":
-  //       "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
-  //     "@odata.etag": 'W/"CQAAABYAAAA8UNgRKS/eTbhQ1zLOYUlqAAAEUOLo"',
-  //     id: "AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=",
-  //   },
-  // };
+// const dummyValue = {
+//   subscriptionId: "da01f595-e793-4b55-8ad4-4eae46f1b57f",
+//   subscriptionExpirationDateTime: "2024-06-20T11:00:00+00:00",
+//   changeType: "created",
+//   resource:
+//     "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
+//   clientState: "SecretClientState",
+//   tenantId: "84df9e7f-e9f6-40af-b435-aaaaaaaaaaaa",
+//   encryptedContent: {
+//     data: "SQDtqrZ3K83+qCH1yRrG3SvfqImyFwjBIs5nCKZIY7pXr+YFzWl0RbxOJRFBrs7Blx2BNdWmcjw4E8ZoQzfixK+SwGrJrDZeHlM2xnzYbY1SXI50pwVZKDaJoHuV8DYx11X8fT/S1Y3B5u4YJqfXMes/uRL8qgZk0F055D0NzaY1jTsD+IenhgIfkjesVt0k9IfXoSMFmqZywb/Q4qQHXV3b2Z8cl3FPRv8ALEF4g0rCCQIArKtMx6rNyscv04jl45Wfkh94Wz1l4G1Z5eMB4gf0OYbcgXMcjw4oUFgRDZjM/5gx+S+SORiOzf4Z1eUSggm+aGm/lZkRY9FvZ/viEkzXUDZkHlID9oU6i7t5a19eQTefv4RwZASfGwBcb6fgZ18b6gSWdPVNPBENe6bMhBLNfZJCiuTYLWMD/JMiMisbJGGCIyQ44MvwZXXEsIA/b8a4KYPqJan+vhFnTE9mrjk6MDwr7LyhmrwEKlsKF45X2sQj5NnClWV8eoJRbSd7/vqC+sw2BtkEzGPy+BaLk2fU9ZNzB6ZNUcpEjkkrVHs=",
+//     dataKey:
+//       "IRNQ8MHNJfHkizyH3NMTp6evv46DMA0yfUhnM6lVIp9DcHtp00e8FlVPXYrnKN+cXJyJyEylsw5UHOEh+w9hr8NcFwMuBw76fATL7IZ8AObRjFulLpl0CAUvCB+ViKM43RSdDKTM7ZOMu2eAK7+JN6f+d0S46kuF21Wqtlg1DSczJwnrlvc3ECQXlYsXbWUwBJTIHmpwSQVD+NUQTlk0ohRLIH9ieXtZXItygovfDGj2XJw/wE68Cx6QXUJOC202n894c23IyPTEHo7B1WT41OrVtwG92QCr25pRGP0eCnqwDu7jf4zpmMqEWKqH1uGS/uSaquSJctdN+YqL26YyQw==",
+//     dataSignature: "hMgKuyrMgH5YkBtsz4Jct2nzdvzAZZ79enimnYtje/c=",
+//     encryptionCertificateId: "93a264cafa864ef39c2673f8ff258b21",
+//     encryptionCertificateThumbprint:
+//       "ABAB3B1CB288713212335F60B6086A063393111D",
+//   },
+//   resourceData: {
+//     "@odata.type": "#microsoft.graph.message",
+//     "@odata.id":
+//       "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
+//     "@odata.etag": 'W/"CQAAABYAAAA8UNgRKS/eTbhQ1zLOYUlqAAAEUOLo"',
+//     id: "AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=",
+//   },
+// };
 
+// TODO:
+// create local subscription in db
+// access token renew
+// subscription renew make cron timer which check subscription
+
+// make required additional subscriptions and select fields (check pdf requrements)
+// create mail messages with only required fields
+// properly update with the change notifications
+
+// setup https production webhook url for receiving notifications
+
+// update db when notfication is received
+// setup socket in frontend and backend
+// emit socket when notification is received
+// update frontend UI to handle emails
+// change frontend data according to received notification using socket
+// create logic for subscription deletion in backend when sign out
+// elastic api key and keyid automatic
+// api payloads validations
+
+//create user 2 choti trigger vairaxa front end ma
+
+app.post("/notification-client", async (req, res) => {
   const subscriptionDataValue = req.body?.value?.[0];
+
+  console.log("notification aayo");
 
   if (subscriptionDataValue) {
     const symmetricKey = decryptRSAWithPrivateKey(
@@ -86,6 +142,7 @@ app.post("/notification-client", async (req, res) => {
     if (!isSignatureValid) {
       res.sendStatus(202);
       console.log("invalid signature !!!");
+      return;
     }
     const finalPayload = decryptPayload(
       subscriptionDataValue.encryptedContent.data,
@@ -93,93 +150,198 @@ app.post("/notification-client", async (req, res) => {
     );
 
     console.log({ finalPayload: JSON.parse(finalPayload) });
+
+    myEmitter.emit("newMailEvent", JSON.parse(finalPayload));
+
+    // todo
+    // update email_messages and mailboxes db with the finalPayload
+    // emit socket event to frontend
   }
 
-  console.log({ body: JSON.stringify(req.body, null, 2) });
+  console.log("notification webhook", {
+    body: JSON.stringify(req.body, null, 2),
+  });
 
   // res.status(200).json({ data: "" });
 
   const validationToken = req.query.validationToken;
 
   if (validationToken) {
-    console.log("Received validation request:", { validationToken });
-
-    // Send the validation token back as plain text
     res.set("Content-Type", "text/plain");
     res.status(200).send(validationToken);
   } else {
     res.sendStatus(202);
-    console.log("Invalid validation request (no token found)");
+    console.log("Validation request has no validation token.");
   }
 });
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 app.post("/lifecycle-notifications", async (req, res) => {
-  res.status(200).json({ data: "" });
+  console.log("lifecycle-notifications", {
+    body: JSON.stringify(req.body, null, 2),
+  });
+  console.log("lifecycle-notifications", {
+    query: JSON.stringify(req.query, null, 2),
+  });
+
+  const validationToken = req.query.validationToken;
+
+  if (validationToken) {
+    res.set("Content-Type", "text/plain");
+    res.status(200).send(validationToken);
+    return;
+  }
+
+  const lifecycleEventValue = req.body?.value?.[0];
+
+  if (lifecycleEventValue?.clientState !== process.env.SECRET_CLIENT_STATE) {
+    res.sendStatus(202);
+    console.log("secret client state didnt match !!");
+    return;
+  }
+
+  if (lifecycleEventValue?.lifecycleEvent === "reauthorizationRequired") {
+    const user: any = await getUserMailBox({
+      userId: req.query.user_id,
+    });
+
+    await azurePatch({
+      accessToken: user._source.access_token,
+      urlPart: `subscriptions/${lifecycleEventValue.subscriptionId}`,
+      data: {
+        // add 4000 minutes to current time
+        expirationDateTime: new Date(
+          new Date().getTime() + 5 * 60 * 1000
+        ).toISOString(),
+      },
+    });
+  }
+  res.sendStatus(202);
+  console.log("Validation request has no validation token.");
 });
 
 app.post("/create-user", async (req, res) => {
   // todo: validate body params
+
+  const { token: accessToken } = req.headers as { token: string };
   try {
-    const data = await createMailBoxDoc({
-      emailAddress: req.body.emailAddress,
-      accountId: req.body.accountId,
-      accessToken: req.body.accessToken,
+    const me = await azureGet({
+      accessToken: accessToken,
+      urlPart: "/me",
+    });
+
+    await createMailBox({
+      emailAddress: me.mail,
+      userId: me.id,
+      accessToken: accessToken,
     });
 
     const { value: mailMessages } = await azureGet({
-      accessToken: req.body.accessToken,
+      accessToken: accessToken,
       urlPart: "/me/messages?top=500",
     });
 
-    console.log({ mailMessages: mailMessages.length });
-
-    const operationsForBulk = mailMessages.flatMap((email) => [
-      { index: { _index: "email_messages", _id: email.id } },
-      {
-        ...email,
-        localAccountId: req.body.accountId,
-        primaryEmail: req.body.emailAddress,
-      },
-    ]);
-    const bulkResponse = await esclient.bulk({
-      refresh: true,
-      operations: operationsForBulk,
+    const responseMails = mailMessages.map((mail) => {
+      return {
+        id: mail.id,
+        isRead: mail.isRead,
+        isDraft: mail.isDraft,
+        subject: mail.subject,
+        bodyPreview: mail.bodyPreview,
+        sender: {
+          name: mail.sender.emailAddress.name,
+          email: mail.sender.emailAddress.address,
+        },
+        userId: mail.userId,
+      };
     });
 
-    if (bulkResponse.errors) {
-      const erroredDocuments = [];
+    await bulkInsertMessages({
+      userId: me.id,
+      mail: me.mail,
+      mailMessages,
+    });
 
-      bulkResponse.items.forEach((action, i) => {
-        const operation = Object.keys(action)[0];
-        if (action[operation].error) {
-          erroredDocuments.push({
-            status: action[operation].status,
-            error: action[operation].error,
-            operation: operation[i * 2],
-            document: operation[i * 2 + 1],
-          });
-        }
+    // await updateUserMailBox({
+    //   userId: me.id,
+    // });
+
+    const createSubscription = async () => {
+      const subscription: MicrosoftGraphSubscription = await azurePost({
+        accessToken: accessToken,
+        urlPart: "/subscriptions",
+        data: {
+          changeType: "created,updated",
+          notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client`,
+          // lifecycleNotificationUrl: `${process.env.WEBHOOK_BASE_URL}/lifecycle-notifications`,
+          resource: `/users/${me.id}/messages?$select=Subject,bodyPreview,importance,receivedDateTime,from`,
+          includeResourceData: true,
+          encryptionCertificate: process.env.CERT_PUBLIC_KEY,
+          encryptionCertificateId: process.env.CERT_ID,
+          expirationDateTime: new Date(
+            new Date().getTime() + 200 * 60 * 1000
+          ).toISOString(),
+          clientState: process.env.SECRET_CLIENT_STATE,
+        },
       });
-      console.log(erroredDocuments);
+
+      await createLocalSubscription({ ...subscription, userId: me.id });
+    };
+
+    const hasSubcriptionIndex = await esclient.indices.exists({
+      index: "subscriptions",
+    });
+
+    if (!hasSubcriptionIndex) {
+      await createSubscription();
+      res.status(200).json({ data: responseMails });
+      return;
     }
 
-    await esclient.update({
-      index: "mailboxes",
-      id: req.body.accountId,
-      body: {
-        doc: {
-          last_sync_time: new Date().toISOString(),
-          sync_status: "updated",
+    const currentSubscriptions = await esclient.search({
+      index: "subscriptions",
+      query: {
+        match: {
+          userId: me.id,
         },
       },
     });
 
-    res.status(200).json({ data: mailMessages });
+    console.log({ currentSubscriptions });
+
+    if (!currentSubscriptions.hits?.hits?.length) {
+      await createSubscription();
+    }
+
+    res.status(200).json({ data: responseMails });
   } catch (e) {
-    res.status(500).json(e);
+    res.status(500).json({ error: e.message });
   }
 });
 
-app.listen(SERVER_PORT, () =>
+app.get("/mails", async (req, res) => {
+  const { token: accessToken } = req.headers as { token: string };
+
+  const me = await azureGet({
+    accessToken: accessToken,
+    urlPart: "/me",
+  });
+
+  const mailMessages = await esclient.search({
+    index: "email_messages",
+    query: {
+      match: {
+        userId: me.id,
+      },
+    },
+  });
+
+  res.status(200).json({ data: mailMessages.hits.hits });
+});
+
+httpServer.listen(SERVER_PORT, () =>
   console.log(` app listening on port ${SERVER_PORT}!`)
 );
