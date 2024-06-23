@@ -5,6 +5,7 @@ import cors from "cors";
 import { v4 as uuidv4 } from "uuid";
 import {
   MicrosoftGraphSubscription,
+  bulkInsertMailfolders,
   bulkInsertMessages,
   createLocalSubscription,
   createMailBox,
@@ -21,6 +22,8 @@ import {
 import { createServer } from "http";
 import { Server } from "socket.io";
 import EventEmitter from "events";
+import { Queue, Worker } from "bullmq";
+import { redisClient } from "./redis";
 
 interface ServerToClientEvents {
   newmail: (payload: {
@@ -59,6 +62,33 @@ const app = express();
 
 export const httpServer = createServer(app);
 
+const subsQueue = new Queue("subsQueue", { connection: redisClient });
+
+const worker = new Worker(
+  "subsQueue",
+  async (job) => {
+    // console.log({ subscriptionPayload });
+    const subscription: MicrosoftGraphSubscription = await azurePost(
+      job.data.subscriptionPayload
+    );
+
+    await createLocalSubscription({
+      ...job.data.subscription,
+      userId: job.data.me.id,
+      mailFolderId: job.data.mailFolder.id,
+    });
+  },
+  { connection: redisClient }
+);
+
+worker.on("completed", (job) => {
+  console.log(`${job.id} has completed!`);
+});
+
+worker.on("failed", (job, err) => {
+  console.log(`${job.id} has failed with ${err.message}`);
+});
+
 const io = new Server(httpServer, {
   cors: {
     origin: "*",
@@ -82,78 +112,18 @@ io.engine.on("connection_error", (err) => {
 app.use(cors());
 app.use(bodyParser.json());
 
-// fetch all mails(graph api) and update in db lets do first 500 for now
-// graph.microsoft.com/v1.0/me/messages?top=500
-// update in mails email_messages index(include the primary user emails as well)
-// update last_sync_time, sync_status in mailboxes index
-
 // setup webhook endpoint
 // https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks?tabs=http
 // https://learn.microsoft.com/en-us/graph/change-notifications-overview
 // https://learn.microsoft.com/en-us/graph/change-notifications-lifecycle-events?tabs=http
 // https://learn.microsoft.com/en-us/graph/api/resources/change-notifications-api-overview?view=graph-rest-1.0
-// track mail changes from webhook and update index
-// update client side at the same time
-
 // https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0&tabs=http
-// https://www.youtube.com/watch?v=GTb33-JeQTc
-
-//learn.microsoft.com/en-us/graph/outlook-change-notifications-overview
-
-// validate validationtoken issuer, auidence, lifetime, signing key(remaining)
-// decode datakey - done
-// decoded datakey + my cert private key and RSA decrypt = symmetric key -done
-
-// const dummyValue = {
-//   subscriptionId: "da01f595-e793-4b55-8ad4-4eae46f1b57f",
-//   subscriptionExpirationDateTime: "2024-06-20T11:00:00+00:00",
-//   changeType: "created",
-//   resource:
-//     "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
-//   clientState: "SecretClientState",
-//   tenantId: "84df9e7f-e9f6-40af-b435-aaaaaaaaaaaa",
-//   encryptedContent: {
-//     data: "SQDtqrZ3K83+qCH1yRrG3SvfqImyFwjBIs5nCKZIY7pXr+YFzWl0RbxOJRFBrs7Blx2BNdWmcjw4E8ZoQzfixK+SwGrJrDZeHlM2xnzYbY1SXI50pwVZKDaJoHuV8DYx11X8fT/S1Y3B5u4YJqfXMes/uRL8qgZk0F055D0NzaY1jTsD+IenhgIfkjesVt0k9IfXoSMFmqZywb/Q4qQHXV3b2Z8cl3FPRv8ALEF4g0rCCQIArKtMx6rNyscv04jl45Wfkh94Wz1l4G1Z5eMB4gf0OYbcgXMcjw4oUFgRDZjM/5gx+S+SORiOzf4Z1eUSggm+aGm/lZkRY9FvZ/viEkzXUDZkHlID9oU6i7t5a19eQTefv4RwZASfGwBcb6fgZ18b6gSWdPVNPBENe6bMhBLNfZJCiuTYLWMD/JMiMisbJGGCIyQ44MvwZXXEsIA/b8a4KYPqJan+vhFnTE9mrjk6MDwr7LyhmrwEKlsKF45X2sQj5NnClWV8eoJRbSd7/vqC+sw2BtkEzGPy+BaLk2fU9ZNzB6ZNUcpEjkkrVHs=",
-//     dataKey:
-//       "IRNQ8MHNJfHkizyH3NMTp6evv46DMA0yfUhnM6lVIp9DcHtp00e8FlVPXYrnKN+cXJyJyEylsw5UHOEh+w9hr8NcFwMuBw76fATL7IZ8AObRjFulLpl0CAUvCB+ViKM43RSdDKTM7ZOMu2eAK7+JN6f+d0S46kuF21Wqtlg1DSczJwnrlvc3ECQXlYsXbWUwBJTIHmpwSQVD+NUQTlk0ohRLIH9ieXtZXItygovfDGj2XJw/wE68Cx6QXUJOC202n894c23IyPTEHo7B1WT41OrVtwG92QCr25pRGP0eCnqwDu7jf4zpmMqEWKqH1uGS/uSaquSJctdN+YqL26YyQw==",
-//     dataSignature: "hMgKuyrMgH5YkBtsz4Jct2nzdvzAZZ79enimnYtje/c=",
-//     encryptionCertificateId: "93a264cafa864ef39c2673f8ff258b21",
-//     encryptionCertificateThumbprint:
-//       "ABAB3B1CB288713212335F60B6086A063393111D",
-//   },
-//   resourceData: {
-//     "@odata.type": "#microsoft.graph.message",
-//     "@odata.id":
-//       "Users('00034001-74b7-a02c-0000-000000000000')/messages('AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=')",
-//     "@odata.etag": 'W/"CQAAABYAAAA8UNgRKS/eTbhQ1zLOYUlqAAAEUOLo"',
-//     id: "AQMkADAwATM0MDAAMS03NGI3LWEwMmMtMDACLTAwCgBGAAADhBNuA9p0M0qctGQaCD3RRQcAPFDYESkv3k24UNcyzmFJagAAAgEMAAAAPFDYESkv3k24UNcyzmFJagAAAARSpl4AAAA=",
-//   },
-// };
-
-// TODO:
-// create local subscription in db
-// access token renew
-// subscription renew make cron timer which check subscription
-
-// make required additional subscriptions and select fields (check pdf requrements)
-// create mail messages with only required fields
-// properly update with the change notifications
-
-// setup https production webhook url for receiving notifications
-
-// update db when notfication is received
-// setup socket in frontend and backend
-// emit socket when notification is received
-// update frontend UI to handle emails
-// change frontend data according to received notification using socket
-// create logic for subscription deletion in backend when sign out
-// elastic api key and keyid automatic
-// api payloads validations
-
-//create user 2 choti trigger vairaxa front end ma
 
 app.post("/notification-client", async (req, res) => {
   const subscriptionDataValue = req.body?.value?.[0];
+
+  const mailFolderId = req.query?.mailFolderId;
+  const username = req.query?.username;
 
   console.log("notification aayo");
 
@@ -186,7 +156,8 @@ app.post("/notification-client", async (req, res) => {
       myEmitter.emit("newMailEvent", {
         id: subscriptionDataValue.resourceData.id,
         changeType: subscriptionDataValue.changeType,
-        username: req.query.username,
+        username,
+        mailFolderId,
         ...JSON.parse(finalPayload),
       });
     }
@@ -212,10 +183,6 @@ app.post("/notification-client", async (req, res) => {
     console.log("Validation request has no validation token.");
   }
 });
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 app.post("/lifecycle-notifications", async (req, res) => {
   console.log("lifecycle-notifications", {
@@ -252,7 +219,7 @@ app.post("/lifecycle-notifications", async (req, res) => {
       data: {
         // add 4000 minutes to current time
         expirationDateTime: new Date(
-          new Date().getTime() + 5 * 60 * 1000
+          new Date().getTime() + 4000 * 60 * 1000
         ).toISOString(),
       },
     });
@@ -277,82 +244,144 @@ app.post("/create-user", async (req, res) => {
       accessToken: accessToken,
     });
 
-    const { value: mailMessages } = await azureGet({
-      accessToken: accessToken,
-      urlPart: "/me/messages?top=500",
-    });
-
-    const responseMails = mailMessages.map((mail) => {
-      return {
-        id: mail.id,
-        isRead: mail.isRead,
-        isDraft: mail.isDraft,
-        subject: mail.subject,
-        bodyPreview: mail.bodyPreview,
-        sender: {
-          name: mail.sender.emailAddress.name,
-          email: mail.sender.emailAddress.address,
-        },
-        userId: mail.userId,
-      };
-    });
-
-    await bulkInsertMessages({
-      userId: me.id,
-      mail: me.mail,
-      mailMessages,
-    });
-
-    // await updateUserMailBox({
-    //   userId: me.id,
+    // const { value: mailMessages } = await azureGet({
+    //   accessToken: accessToken,
+    //   urlPart: "/me/messages?top=500",
     // });
 
-    const createSubscription = async () => {
-      const subscription: MicrosoftGraphSubscription = await azurePost({
+    const { value: mailFolders } = await azureGet({
+      accessToken: accessToken,
+      urlPart: "/me/mailFolders?top=10",
+    });
+
+    //remove later
+    // const mailFolders = mailFolders1.filter(
+    //   (a) => a.displayName === "Inbox" || a.displayName === "Drafts"
+    // );
+    await bulkInsertMailfolders({
+      userId: me.id,
+      mail: me.mail,
+      mailFolders,
+    });
+
+    const mailFolderMap = new Map();
+
+    for (let i = 0; i < mailFolders?.length; i++) {
+      const mailFolder = mailFolders[i];
+
+      const { value: folderMails } = await azureGet({
+        accessToken: accessToken,
+        urlPart: `/me/mailFolders/${mailFolder.id}/messages?top=200`,
+      });
+
+      mailFolderMap.set(mailFolder.id, folderMails);
+      if (folderMails?.length > 0) {
+        await bulkInsertMessages({
+          userId: me.id,
+          mail: me.mail,
+          mailFolderId: mailFolder.id,
+          mailFolderName: mailFolder.name,
+          mailMessages: folderMails,
+        });
+      }
+
+      const subscriptionPayload = {
         accessToken: accessToken,
         urlPart: "/subscriptions",
         data: {
-          changeType: "created,updated",
-          notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client?username=${me.userPrincipalName}`,
+          changeType: "created,updated,deleted",
+          notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client?username=${me.userPrincipalName}&mailFolderId=${mailFolder.id}`,
           // lifecycleNotificationUrl: `${process.env.WEBHOOK_BASE_URL}/lifecycle-notifications`,
-          resource: `/users/${me.id}/messages?$select=Subject,bodyPreview,receivedDateTime,from,isRead,isDraft,id,importance`,
+          resource: `/users/${me.id}/mailFolders/${mailFolder.id}/messages?$select=Subject,bodyPreview,receivedDateTime,from,isRead,isDraft,id,importance,flag`,
           includeResourceData: true,
           encryptionCertificate: process.env.CERT_PUBLIC_KEY,
           encryptionCertificateId: process.env.CERT_ID,
           expirationDateTime: new Date(
-            new Date().getTime() + 200 * 60 * 1000
+            new Date().getTime() + 4000 * 60 * 1000
           ).toISOString(),
           clientState: process.env.SECRET_CLIENT_STATE,
         },
+      };
+
+      // const createMailFolderSubscription = async (subscriptionPayload, me, mailFolder) => {
+      //   // console.log({ subscriptionPayload });
+      //   const subscription: MicrosoftGraphSubscription = await azurePost(
+      //     subscriptionPayload
+      //   );
+
+      //   await createLocalSubscription({
+      //     ...subscription,
+      //     userId: me.id,
+      //     mailFolderId: mailFolder.id,
+      //   });
+      // };
+
+      const hasSubcriptionIndex = await esclient.indices.exists({
+        index: "subscriptions",
       });
 
-      await createLocalSubscription({ ...subscription, userId: me.id });
-    };
+      if (!hasSubcriptionIndex) {
+        await subsQueue.add("createSubscription", {
+          subscriptionPayload,
+          me,
+          mailFolder,
+        });
+        continue;
+      }
 
-    const hasSubcriptionIndex = await esclient.indices.exists({
-      index: "subscriptions",
-    });
-
-    if (!hasSubcriptionIndex) {
-      await createSubscription();
-      res.status(200).json({ data: responseMails });
-      return;
-    }
-
-    const currentSubscriptions = await esclient.search({
-      index: "subscriptions",
-      query: {
-        match: {
-          userId: me.id,
+      const currentSubscriptions = await esclient.search({
+        index: "subscriptions",
+        query: {
+          bool: {
+            must: [
+              { match: { userId: me.id } },
+              { match: { mailFolderId: mailFolder.id } },
+            ],
+          },
         },
-      },
-    });
+      });
 
-    if (!currentSubscriptions.hits?.hits?.length) {
-      await createSubscription();
+      if (!currentSubscriptions.hits?.hits?.length) {
+        await subsQueue.add("createSubscription", {
+          subscriptionPayload,
+          me,
+          mailFolder,
+        });
+      }
     }
 
-    res.status(200).json({ data: responseMails });
+    // const localEmailMessages: any = await esclient.search({
+    //   index: "email_messages",
+    //   size: 200,
+    //   query: {
+    //     match: {
+    //       userId: me.id,
+    //     },
+    //   },
+    // });
+
+    // const responseMails = localEmailMessages?.hits?.hits.map((data: any) => {
+    //   const mail = data._source;
+    //   return {
+    //     id: mail.id,
+    //     isRead: mail.isRead,
+    //     isDraft: mail.isDraft,
+    //     subject: mail.subject,
+    //     bodyPreview: mail.bodyPreview,
+    //     sender: {
+    //       name: mail.sender?.emailAddress?.name,
+    //       email: mail.sender?.emailAddress?.address,
+    //     },
+    //     userId: mail.userId,
+    //     flagStatus: mail.flag?.flagStatus,
+    //     mailFolderId: mail.mailFolderId,
+    //     mailFolderName: mail.mailFolderName,
+    //   };
+    // });
+
+    res.status(200).json({
+      data: { responseMails: Object.fromEntries(mailFolderMap), mailFolders },
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

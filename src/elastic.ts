@@ -331,11 +331,56 @@ export const createMailBox = async ({
   }
 };
 
-export const bulkInsertMessages = async ({ userId, mail, mailMessages }) => {
+export const bulkInsertMessages = async ({
+  userId,
+  mail,
+  mailMessages,
+  mailFolderId,
+  mailFolderName,
+}) => {
   const operationsForBulk = mailMessages.flatMap((email) => [
     { index: { _index: "email_messages", _id: email.id } },
     {
       ...email,
+      userId,
+      primaryEmail: mail,
+      mailFolderId,
+      mailFolderName,
+    },
+  ]);
+  try {
+    const bulkResponse = await esclient.bulk({
+      refresh: true,
+      operations: operationsForBulk,
+    });
+
+    if (bulkResponse.errors) {
+      const erroredDocuments = [];
+
+      bulkResponse.items.forEach((action, i) => {
+        const operation = Object.keys(action)[0];
+        if (action[operation].error) {
+          erroredDocuments.push({
+            status: action[operation].status,
+            error: action[operation].error,
+            operation: operation[i * 2],
+            document: operation[i * 2 + 1],
+          });
+        }
+      });
+      console.log(erroredDocuments);
+    }
+  } catch (e) {
+    console.error("Error bulkInsertMessages:", e);
+    throw e;
+  }
+};
+
+export const bulkInsertMailfolders = async ({ userId, mail, mailFolders }) => {
+  const operationsForBulk = mailFolders.flatMap((folder) => [
+    { index: { _index: "mail_folders", _id: folder.id } },
+    {
+      ...folder,
       userId,
       primaryEmail: mail,
     },
@@ -363,7 +408,7 @@ export const bulkInsertMessages = async ({ userId, mail, mailMessages }) => {
       console.log(erroredDocuments);
     }
   } catch (e) {
-    console.error("Error bulkInsertMessages:", e);
+    console.error("Error bulkInsertMailfolders:", e);
     throw e;
   }
 };
@@ -413,7 +458,10 @@ export interface MicrosoftGraphSubscription {
 }
 
 export const createLocalSubscription = async (
-  subscription: MicrosoftGraphSubscription & { userId: string }
+  subscription: MicrosoftGraphSubscription & {
+    userId: string;
+    mailFolderId: string;
+  }
 ) => {
   try {
     return await esclient.index({
