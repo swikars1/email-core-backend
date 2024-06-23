@@ -22,6 +22,37 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import EventEmitter from "events";
 
+interface ServerToClientEvents {
+  newmail: (payload: {
+    id: string;
+    subject: string;
+    bodyPreview: string;
+    receivedDateTime: string;
+    from: {
+      emailAddress: {
+        name: string;
+        address: string;
+      };
+    };
+    isRead: string;
+    isDraft: string;
+    importance: string;
+    changeType: "created" | "updated";
+  }) => void;
+  session: (payload: { sessionID: string; username: string }) => void;
+}
+
+interface ClientToServerEvents {
+  register: (args: { username: string }) => void;
+}
+
+interface InterServerEvents {}
+
+interface SocketData {
+  sessionID: string;
+  username: string;
+}
+
 const SERVER_PORT = process.env.PORT || 3000;
 
 const app = express();
@@ -40,7 +71,7 @@ const myEmitter = new EventEmitter();
 
 io.on("connection", (socket) => {
   myEmitter.on("newMailEvent", (data) => {
-    socket.emit("newmail", data);
+    socket.emit(`newmail-${data.username}`, data);
   });
 });
 
@@ -151,7 +182,14 @@ app.post("/notification-client", async (req, res) => {
 
     console.log({ finalPayload: JSON.parse(finalPayload) });
 
-    myEmitter.emit("newMailEvent", JSON.parse(finalPayload));
+    if (subscriptionDataValue.resourceData.id && finalPayload) {
+      myEmitter.emit("newMailEvent", {
+        id: subscriptionDataValue.resourceData.id,
+        changeType: subscriptionDataValue.changeType,
+        username: req.query.username,
+        ...JSON.parse(finalPayload),
+      });
+    }
 
     // todo
     // update email_messages and mailboxes db with the finalPayload
@@ -275,9 +313,9 @@ app.post("/create-user", async (req, res) => {
         urlPart: "/subscriptions",
         data: {
           changeType: "created,updated",
-          notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client`,
+          notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client?username=${me.userPrincipalName}`,
           // lifecycleNotificationUrl: `${process.env.WEBHOOK_BASE_URL}/lifecycle-notifications`,
-          resource: `/users/${me.id}/messages?$select=Subject,bodyPreview,importance,receivedDateTime,from`,
+          resource: `/users/${me.id}/messages?$select=Subject,bodyPreview,receivedDateTime,from,isRead,isDraft,id,importance`,
           includeResourceData: true,
           encryptionCertificate: process.env.CERT_PUBLIC_KEY,
           encryptionCertificateId: process.env.CERT_ID,
@@ -309,8 +347,6 @@ app.post("/create-user", async (req, res) => {
         },
       },
     });
-
-    console.log({ currentSubscriptions });
 
     if (!currentSubscriptions.hits?.hits?.length) {
       await createSubscription();
