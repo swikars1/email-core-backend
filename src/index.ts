@@ -2,12 +2,9 @@ import express from "express";
 
 import "dotenv/config";
 import cors from "cors";
-import { v4 as uuidv4 } from "uuid";
 import {
-  MicrosoftGraphSubscription,
   bulkInsertMailfolders,
   bulkInsertMessages,
-  createLocalSubscription,
   createMailBox,
   esclient,
   getUserMailBox,
@@ -22,39 +19,7 @@ import {
 import { createServer } from "http";
 import { Server } from "socket.io";
 import EventEmitter from "events";
-import { Queue, Worker } from "bullmq";
-import { redisClient } from "./redis";
-
-interface ServerToClientEvents {
-  newmail: (payload: {
-    id: string;
-    subject: string;
-    bodyPreview: string;
-    receivedDateTime: string;
-    from: {
-      emailAddress: {
-        name: string;
-        address: string;
-      };
-    };
-    isRead: string;
-    isDraft: string;
-    importance: string;
-    changeType: "created" | "updated";
-  }) => void;
-  session: (payload: { sessionID: string; username: string }) => void;
-}
-
-interface ClientToServerEvents {
-  register: (args: { username: string }) => void;
-}
-
-interface InterServerEvents {}
-
-interface SocketData {
-  sessionID: string;
-  username: string;
-}
+import { subsQueue } from "./queues";
 
 const SERVER_PORT = process.env.PORT || 3000;
 
@@ -62,42 +27,15 @@ const app = express();
 
 export const httpServer = createServer(app);
 
-const subsQueue = new Queue("subsQueue", { connection: redisClient });
-
-const worker = new Worker(
-  "subsQueue",
-  async (job) => {
-    // console.log({ subscriptionPayload });
-    const subscription: MicrosoftGraphSubscription = await azurePost(
-      job.data.subscriptionPayload
-    );
-
-    await createLocalSubscription({
-      ...job.data.subscription,
-      userId: job.data.me.id,
-      mailFolderId: job.data.mailFolder.id,
-    });
-  },
-  { connection: redisClient }
-);
-
-worker.on("completed", (job) => {
-  console.log(`${job.id} has completed!`);
-});
-
-worker.on("failed", (job, err) => {
-  console.log(`${job.id} has failed with ${err.message}`);
-});
-
 const io = new Server(httpServer, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
-    // credentials: true,
   },
 });
 
 const myEmitter = new EventEmitter();
+myEmitter.setMaxListeners(15);
 
 io.on("connection", (socket) => {
   myEmitter.on("newMailEvent", (data) => {
@@ -112,7 +50,6 @@ io.engine.on("connection_error", (err) => {
 app.use(cors());
 app.use(bodyParser.json());
 
-// setup webhook endpoint
 // https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks?tabs=http
 // https://learn.microsoft.com/en-us/graph/change-notifications-overview
 // https://learn.microsoft.com/en-us/graph/change-notifications-lifecycle-events?tabs=http
@@ -124,8 +61,6 @@ app.post("/notification-client", async (req, res) => {
 
   const mailFolderId = req.query?.mailFolderId;
   const username = req.query?.username;
-
-  console.log("notification aayo");
 
   if (subscriptionDataValue) {
     const symmetricKey = decryptRSAWithPrivateKey(
@@ -150,7 +85,10 @@ app.post("/notification-client", async (req, res) => {
       symmetricKey
     );
 
-    console.log({ finalPayload: JSON.parse(finalPayload) });
+    console.log({
+      finalPayload: JSON.parse(finalPayload),
+      body: JSON.stringify(req.body, null, 2),
+    });
 
     if (subscriptionDataValue.resourceData.id && finalPayload) {
       myEmitter.emit("newMailEvent", {
@@ -161,17 +99,7 @@ app.post("/notification-client", async (req, res) => {
         ...JSON.parse(finalPayload),
       });
     }
-
-    // todo
-    // update email_messages and mailboxes db with the finalPayload
-    // emit socket event to frontend
   }
-
-  console.log("notification webhook", {
-    body: JSON.stringify(req.body, null, 2),
-  });
-
-  // res.status(200).json({ data: "" });
 
   const validationToken = req.query.validationToken;
 
@@ -229,7 +157,11 @@ app.post("/lifecycle-notifications", async (req, res) => {
 });
 
 app.post("/create-user", async (req, res) => {
-  // todo: validate body params
+  if (!req.headers?.token) {
+    console.log("Token was not found in header");
+    res.sendStatus(400);
+    return;
+  }
 
   const { token: accessToken } = req.headers as { token: string };
   try {
@@ -244,20 +176,11 @@ app.post("/create-user", async (req, res) => {
       accessToken: accessToken,
     });
 
-    // const { value: mailMessages } = await azureGet({
-    //   accessToken: accessToken,
-    //   urlPart: "/me/messages?top=500",
-    // });
-
     const { value: mailFolders } = await azureGet({
       accessToken: accessToken,
       urlPart: "/me/mailFolders?top=10",
     });
 
-    //remove later
-    // const mailFolders = mailFolders1.filter(
-    //   (a) => a.displayName === "Inbox" || a.displayName === "Drafts"
-    // );
     await bulkInsertMailfolders({
       userId: me.id,
       mail: me.mail,
@@ -303,19 +226,6 @@ app.post("/create-user", async (req, res) => {
         },
       };
 
-      // const createMailFolderSubscription = async (subscriptionPayload, me, mailFolder) => {
-      //   // console.log({ subscriptionPayload });
-      //   const subscription: MicrosoftGraphSubscription = await azurePost(
-      //     subscriptionPayload
-      //   );
-
-      //   await createLocalSubscription({
-      //     ...subscription,
-      //     userId: me.id,
-      //     mailFolderId: mailFolder.id,
-      //   });
-      // };
-
       const hasSubcriptionIndex = await esclient.indices.exists({
         index: "subscriptions",
       });
@@ -350,35 +260,6 @@ app.post("/create-user", async (req, res) => {
       }
     }
 
-    // const localEmailMessages: any = await esclient.search({
-    //   index: "email_messages",
-    //   size: 200,
-    //   query: {
-    //     match: {
-    //       userId: me.id,
-    //     },
-    //   },
-    // });
-
-    // const responseMails = localEmailMessages?.hits?.hits.map((data: any) => {
-    //   const mail = data._source;
-    //   return {
-    //     id: mail.id,
-    //     isRead: mail.isRead,
-    //     isDraft: mail.isDraft,
-    //     subject: mail.subject,
-    //     bodyPreview: mail.bodyPreview,
-    //     sender: {
-    //       name: mail.sender?.emailAddress?.name,
-    //       email: mail.sender?.emailAddress?.address,
-    //     },
-    //     userId: mail.userId,
-    //     flagStatus: mail.flag?.flagStatus,
-    //     mailFolderId: mail.mailFolderId,
-    //     mailFolderName: mail.mailFolderName,
-    //   };
-    // });
-
     res.status(200).json({
       data: { responseMails: Object.fromEntries(mailFolderMap), mailFolders },
     });
@@ -387,26 +268,6 @@ app.post("/create-user", async (req, res) => {
   }
 });
 
-app.get("/mails", async (req, res) => {
-  const { token: accessToken } = req.headers as { token: string };
-
-  const me = await azureGet({
-    accessToken: accessToken,
-    urlPart: "/me",
-  });
-
-  const mailMessages = await esclient.search({
-    index: "email_messages",
-    query: {
-      match: {
-        userId: me.id,
-      },
-    },
-  });
-
-  res.status(200).json({ data: mailMessages.hits.hits });
-});
-
 httpServer.listen(SERVER_PORT, () =>
-  console.log(` app listening on port ${SERVER_PORT}!`)
+  console.log(`app listening on port ${SERVER_PORT}!`)
 );

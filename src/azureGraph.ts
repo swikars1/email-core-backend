@@ -2,7 +2,7 @@ import axios from "axios";
 
 const azureApi = axios.create({
   baseURL: "https://graph.microsoft.com/v1.0",
-  timeout: 5000,
+  timeout: 8000,
 });
 
 export async function azureGet({
@@ -44,7 +44,7 @@ export async function azurePost({
 
     return response.data;
   } catch (error) {
-    console.error("Error posting data in Outlook Graph API:" + urlPart);
+    console.error("Error posting data in Outlook Graph API:" + urlPart, data);
     throw error;
   }
 }

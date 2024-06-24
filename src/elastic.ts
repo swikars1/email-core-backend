@@ -434,7 +434,7 @@ export const updateUserMailBox = async ({ userId }) => {
 export const getUserMailBox = async ({ userId }) => {
   await esclient.get({
     index: "mailboxes",
-    id: userId, // not sure if this comes
+    id: userId,
   });
 };
 
