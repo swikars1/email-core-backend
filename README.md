@@ -41,7 +41,7 @@ Make sure you have the following installed:
 
 6. Update .env:
 
-   Replace the `WEBHOOK_BASE_URL` in your .env file with the ngrok HTTPS URL. Example:
+   Replace the value of `WEBHOOK_BASE_URL` in your .env file with the ngrok HTTPS URL. Example:
 
    `WEBHOOK_BASE_URL=https://d7f8-80b9-a79-c0-1434.ngrok-free.app`
 
