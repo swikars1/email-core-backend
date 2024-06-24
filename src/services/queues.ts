@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
-import { azurePost } from "./azureGraph";
 import { MicrosoftGraphSubscription, createLocalSubscription } from "./elastic";
+import { azurePost } from "../utils/azureGraph";
 import { redisClient } from "./redis";
 
 export const subsQueue = new Queue("subsQueue", {
