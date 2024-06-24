@@ -7,6 +7,7 @@ import { syncMail } from "./controllers/syncMail.controller";
 import { lifecycleNotification } from "./controllers/lifecycleNotification.controller";
 import { notificationClient } from "./controllers/notificatiionClient.controller";
 import { initSockets } from "./services/socket";
+import { deleteSubsQueue } from "./services/queues";
 
 const SERVER_PORT = process.env.PORT || 3000;
 
@@ -33,6 +34,17 @@ app.post(
 app.post("/lifecycle-notifications", lifecycleNotification);
 
 app.post("/sync-mail", syncMail);
+
+// app.post("/delete-subs/:userId", (req, res) => {
+//   const { token } = req.headers;
+//   const { userId } = req.params;
+//   deleteSubsQueue.add("deleteSubsriptions", {
+//     accessToken: token,
+//     userId,
+//   });
+
+//   res.sendStatus(200);
+// });
 
 httpServer.listen(SERVER_PORT, () =>
   console.log(`app listening on port ${SERVER_PORT}!`)

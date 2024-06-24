@@ -71,3 +71,24 @@ export async function azurePatch({
     throw error;
   }
 }
+
+export async function azureDelete({
+  accessToken,
+  urlPart,
+}: {
+  accessToken: string;
+  urlPart: string;
+}) {
+  try {
+    const response = await azureApi.delete(urlPart, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("Error deleting data in Outlook Graph API:" + urlPart);
+    throw error;
+  }
+}

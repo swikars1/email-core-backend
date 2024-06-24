@@ -22,10 +22,8 @@ export interface MicrosoftGraphSubscription {
 export const esclient = new Client({
   node: process.env.ELASTIC_ENDPOINT,
   auth: {
-    apiKey: {
-      id: process.env.ELASTIC_API_KEY_ID,
-      api_key: process.env.ELASTIC_API_KEY,
-    },
+    username: process.env.ELASTIC_USERNAME,
+    password: process.env.ELASTIC_PASSWORD,
   },
 });
 
