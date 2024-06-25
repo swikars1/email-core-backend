@@ -39,6 +39,8 @@ Make sure you have the following installed:
 
    `ngrok http 3000 --host-header=rewrite`
 
+   Ngrok is required for development environment to provide `https` url as a webhook url to Microsoft.
+
 6. Update .env:
 
    Replace the value of `WEBHOOK_BASE_URL` in your .env file with the ngrok HTTPS URL. Example:
