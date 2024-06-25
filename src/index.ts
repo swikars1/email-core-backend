@@ -35,15 +35,25 @@ app.post("/lifecycle-notifications", lifecycleNotification);
 
 app.post("/sync-mail", syncMail);
 
-// app.post("/delete-subs/:userId", (req, res) => {
-//   const { token } = req.headers;
-//   const { userId } = req.params;
-//   deleteSubsQueue.add("deleteSubsriptions", {
-//     accessToken: token,
-//     userId,
-//   });
+// subscription delete route uncomment when needed
 
-//   res.sendStatus(200);
+// app.post("/del-sub/:userId", async (req, res) => {
+//   const { accessToken } = req.headers as {
+//     accessToken: string;
+//   };
+//   const { userId } = req.params;
+
+//   try {
+//     await deleteSubsQueue.add("deleteSubsriptions", {
+//       accessToken: accessToken,
+//       userId,
+//     });
+//     res.sendStatus(200);
+//     return;
+//   } catch (e) {
+//     res.sendStatus(401);
+//     return;
+//   }
 // });
 
 httpServer.listen(SERVER_PORT, () =>

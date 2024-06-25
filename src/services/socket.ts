@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
 
 export const initSockets = (httpServer) => {
   const io = new Server(httpServer, {
@@ -13,6 +14,21 @@ export const initSockets = (httpServer) => {
 
   myEmitter.setMaxListeners(15);
   const activeConnections = {};
+
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (token) {
+      try {
+        const data = jwt.verify(token, process.env.JWT_SECRET);
+        if (data) {
+          next();
+        }
+      } catch (e) {
+        console.log("jwt token verification failed");
+        next(new Error("jwt token verification failed"));
+      }
+    }
+  });
 
   io.on("connection", (socket) => {
     let userUsername: string;

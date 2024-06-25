@@ -2,7 +2,7 @@
 
 Real-time Outlook Email Syncing
 
-This API provides real-time Outlook email synchronization using OAuth, Elasticsearch, Microsoft change notifications (webhooks).
+This API provides real-time Outlook email synchronization using OAuth, Elasticsearch, Sockets and Microsoft change notifications with resources.
 
 ## Getting Started
 
@@ -48,3 +48,10 @@ Make sure you have the following installed:
 7. Restart Express Server:
 
    `docker compose restart express-server`
+
+**Note for local development evironment:**
+
+Subscription object consist of `WEBHOOK_BASE_URL`, if webhook url is changed later or if ngrok is restarted need to the following steps:
+
+- Remove all values of that user from elasticseach `subscriptions` index.
+- Refresh the page to create new subscriptions in the microsoft server and in local.

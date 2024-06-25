@@ -8,6 +8,7 @@ import {
 } from "../services/elastic";
 import { subsQueue } from "../services/queues";
 import { azureGet } from "../utils/azureGraph";
+import jwt from "jsonwebtoken";
 
 export const syncMail = async (req: Request, res: Response) => {
   if (!req.headers?.token) {
@@ -22,6 +23,8 @@ export const syncMail = async (req: Request, res: Response) => {
       accessToken: accessToken,
       urlPart: "/me",
     });
+
+    const jwtToken = jwt.sign(me, process.env.JWT_SECRET, { expiresIn: "2d" });
 
     await createMailBox({
       emailAddress: me.mail,
@@ -105,7 +108,11 @@ export const syncMail = async (req: Request, res: Response) => {
     }
 
     res.status(200).json({
-      data: { responseMails: Object.fromEntries(mailFolderMap), mailFolders },
+      data: {
+        responseMails: Object.fromEntries(mailFolderMap),
+        mailFolders,
+        jwtToken,
+      },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
