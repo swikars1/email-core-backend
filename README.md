@@ -35,9 +35,9 @@ Make sure you have the following installed:
 
    `docker compose up --build`
 
-5. Get ngrok HTTPS URL:
+5. Install ngrok from here: https://ngrok.com/docs/getting-started/
 
-   `npm run ngrok-url`
+   `ngrok http 3000 --host-header=rewrite`
 
 6. Update .env:
 
@@ -53,5 +53,5 @@ Make sure you have the following installed:
 
 Subscription object consist of `WEBHOOK_BASE_URL`, if webhook url is changed later or if ngrok is restarted need to the following steps:
 
-- Remove all values of that user from elasticseach `subscriptions` index.
+- Remove all old values of that user from elasticsearch `subscriptions` index.
 - Refresh the page to create new subscriptions in the microsoft server and in local.

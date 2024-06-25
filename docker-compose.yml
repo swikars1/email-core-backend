@@ -121,21 +121,6 @@ services:
       - elasticsearch
     command: npm run dev
 
-  ngrok:
-    image: ngrok/ngrok:latest
-    restart: unless-stopped
-    command:
-      - "http"
-      - "express-server:3000"
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
-    networks:
-      - elk
-    depends_on:
-      - express-server
-    ports:
-      - 4040:4040
-
 networks:
   elk:
     driver: bridge
