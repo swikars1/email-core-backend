@@ -35,7 +35,7 @@ Make sure you have the following installed:
 
    `docker compose up --build`
 
-5. Install ngrok from here: https://ngrok.com/docs/getting-started/
+5. Install ngrok from here: https://ngrok.com/docs/getting-started/#step-1-install
 
    `ngrok http 3000 --host-header=rewrite`
 
@@ -53,5 +53,9 @@ Make sure you have the following installed:
 
 Subscription object consist of `WEBHOOK_BASE_URL`, if webhook url is changed later or if ngrok is restarted need to the following steps:
 
-- Remove all old values of that user from elasticsearch `subscriptions` index.
-- Refresh the page to create new subscriptions in the microsoft server and in local.
+- Remove all old values of that user from elasticsearch `subscriptions` index and microsoft server.
+
+- Use `POST /del-sub/:userId` route with `accessToken` in the header to delete old subscriptions.
+  Access tokens can be found in mailboxes index.
+
+- Refresh the page or relogin to create new subscriptions in the microsoft server and in local.

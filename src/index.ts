@@ -35,26 +35,26 @@ app.post("/lifecycle-notifications", lifecycleNotification);
 
 app.post("/sync-mail", syncMail);
 
-// subscription delete route uncomment when needed
+// REMOVE LATER: subscription delete route uncomment when needed
 
-// app.post("/del-sub/:userId", async (req, res) => {
-//   const { accessToken } = req.headers as {
-//     accessToken: string;
-//   };
-//   const { userId } = req.params;
+app.post("/del-sub/:userId", async (req, res) => {
+  const { accessToken } = req.headers as {
+    accessToken: string;
+  };
+  const { userId } = req.params;
 
-//   try {
-//     await deleteSubsQueue.add("deleteSubsriptions", {
-//       accessToken: accessToken,
-//       userId,
-//     });
-//     res.sendStatus(200);
-//     return;
-//   } catch (e) {
-//     res.sendStatus(401);
-//     return;
-//   }
-// });
+  try {
+    await deleteSubsQueue.add("deleteSubsriptions", {
+      accessToken: accessToken,
+      userId,
+    });
+    res.sendStatus(200);
+    return;
+  } catch (e) {
+    res.sendStatus(401);
+    return;
+  }
+});
 
 httpServer.listen(SERVER_PORT, () =>
   console.log(`app listening on port ${SERVER_PORT}!`)
