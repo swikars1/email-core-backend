@@ -27,12 +27,12 @@ export const lifecycleNotification = async (req: Request, res: Response) => {
   }
 
   if (lifecycleEventValue?.lifecycleEvent === "reauthorizationRequired") {
-    const user: any = await getUserMailBox({
+    const user = await getUserMailBox({
       userId: req.query.user_id,
     });
 
     await azurePatch({
-      accessToken: user._source.access_token,
+      accessToken: user._source.accessToken,
       urlPart: `subscriptions/${lifecycleEventValue.subscriptionId}`,
       data: {
         // add 4000 minutes to current time

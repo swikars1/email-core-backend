@@ -1,11 +1,8 @@
 import { Queue, Worker } from "bullmq";
-import {
-  MicrosoftGraphSubscription,
-  createLocalSubscription,
-  esclient,
-} from "./elastic";
+import { createLocalSubscription, esclient } from "./elastic";
 import { azureDelete, azurePost } from "../utils/azureGraph";
 import { redisClient } from "./redis";
+import { LocalSubscription, MicrosoftGraphSubscription } from "../types";
 
 export const subsQueue = new Queue("subsQueue", {
   connection: redisClient,
@@ -80,7 +77,7 @@ const deleteSubsWorker = new Worker(
     });
 
     for (let i = 0; i < data?.length; i++) {
-      const subscription: any = data[i]._source;
+      const subscription = data[i]._source as LocalSubscription;
       await azureDelete({
         accessToken: job.data.accessToken,
         urlPart: `/subscriptions/${subscription.id}`,

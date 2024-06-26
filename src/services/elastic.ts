@@ -1,23 +1,5 @@
 import { Client } from "@elastic/elasticsearch";
-
-export interface MicrosoftGraphSubscription {
-  "@odata.context": string;
-  id: string;
-  resource: string;
-  applicationId: string;
-  changeType: string;
-  clientState: string;
-  notificationUrl: string;
-  notificationQueryOptions: null | string; // Allowing for potential non-null values
-  lifecycleNotificationUrl: string;
-  expirationDateTime: string; // ISO 8601 date string
-  creatorId: string;
-  includeResourceData: boolean;
-  latestSupportedTlsVersion: string;
-  encryptionCertificate: string;
-  encryptionCertificateId: string;
-  notificationUrlAppId: null | string; // Allowing for potential non-null values
-}
+import { Mailboxes, MicrosoftGraphSubscription } from "../types";
 
 export const esclient = new Client({
   node: process.env.ELASTIC_ENDPOINT,
@@ -138,10 +120,16 @@ export const bulkInsertMailfolders = async ({ userId, mail, mailFolders }) => {
 };
 
 export const getUserMailBox = async ({ userId }) => {
-  await esclient.get({
-    index: "mailboxes",
-    id: userId,
-  });
+  try {
+    const data = await esclient.get({
+      index: "mailboxes",
+      id: userId,
+    });
+    return data as { _source: Mailboxes };
+  } catch (e) {
+    console.error("Error getUserMailBox:", e);
+    throw e;
+  }
 };
 
 export const createLocalSubscription = async (
