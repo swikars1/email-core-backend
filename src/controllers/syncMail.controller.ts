@@ -70,7 +70,6 @@ export const syncMail = async (req: Request, res: Response) => {
         data: {
           changeType: "created,updated,deleted",
           notificationUrl: `${process.env.WEBHOOK_BASE_URL}/notification-client?username=${me.userPrincipalName}&mailFolderId=${mailFolder.id}`,
-          // lifecycleNotificationUrl: `${process.env.WEBHOOK_BASE_URL}/lifecycle-notifications`,
           resource: `/users/${me.id}/mailFolders/${mailFolder.id}/messages?$select=Subject,bodyPreview,receivedDateTime,from,isRead,isDraft,id,importance,flag`,
           includeResourceData: true,
           encryptionCertificate: process.env.CERT_PUBLIC_KEY,

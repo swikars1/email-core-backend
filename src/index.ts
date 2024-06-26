@@ -20,12 +20,6 @@ const { myEmitter } = initSockets(httpServer);
 app.use(cors());
 app.use(bodyParser.json());
 
-// https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks?tabs=http
-// https://learn.microsoft.com/en-us/graph/change-notifications-overview
-// https://learn.microsoft.com/en-us/graph/change-notifications-lifecycle-events?tabs=http
-// https://learn.microsoft.com/en-us/graph/api/resources/change-notifications-api-overview?view=graph-rest-1.0
-// https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0&tabs=http
-
 app.post(
   "/notification-client",
   async (req, res, next) => await notificationClient(req, res, next, myEmitter)
@@ -34,8 +28,6 @@ app.post(
 app.post("/lifecycle-notifications", lifecycleNotification);
 
 app.post("/sync-mail", syncMail);
-
-// REMOVE LATER: subscription delete route uncomment when needed
 
 app.post("/del-sub/:userId", async (req, res) => {
   const { accessToken } = req.headers as {
