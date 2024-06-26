@@ -25,29 +25,25 @@ Make sure you have the following installed:
 
    `npm install`
 
-3. Create .env:
-
-   Create a .env file at the root of your project and fill in your environment variables.
-
-4. Run with Docker:
+3. Run with Docker:
 
    `docker compose up setup`
 
    `docker compose up --build`
 
-5. Install ngrok from here: https://ngrok.com/docs/getting-started/#step-1-install
+4. Install ngrok from here: https://ngrok.com/docs/getting-started/#step-1-install
 
    `ngrok http 3000 --host-header=rewrite`
 
    Ngrok is required for development environment to provide `https` url as a webhook url to Microsoft.
 
-6. Update .env:
+5. Update .env:
 
    Replace the value of `WEBHOOK_BASE_URL` in your .env file with the ngrok HTTPS URL. Example:
 
    `WEBHOOK_BASE_URL=https://d7f8-80b9-a79-c0-1434.ngrok-free.app`
 
-7. Restart Express Server:
+6. Restart Express Server:
 
    `docker compose restart express-server`
 
